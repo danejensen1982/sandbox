@@ -2,6 +2,7 @@ import { randomBytes } from 'crypto';
 import { hash } from './encryption';
 import prisma from '@/lib/db';
 import { createAssessmentToken, verifyAssessmentToken, AssessmentTokenPayload } from './jwt';
+import type { Prisma } from '@prisma/client';
 
 // Characters that are easy to read and type (no confusing chars like 0/O, 1/I/L)
 const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -37,14 +38,14 @@ export async function generateAssessmentCodes(
   count: number,
   options?: {
     expiresAt?: Date;
-    metadata?: Record<string, unknown>;
+    metadata?: Prisma.InputJsonValue;
   }
 ): Promise<Array<{ code: string; token: string; link: string }>> {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
   const results: Array<{ code: string; token: string; link: string }> = [];
 
   // Generate codes in batch
-  const codesToCreate = [];
+  const codesToCreate: Prisma.AssessmentCodeCreateManyInput[] = [];
   for (let i = 0; i < count; i++) {
     const code = generateShortCode();
     const token = generateToken();
@@ -55,7 +56,7 @@ export async function generateAssessmentCodes(
       tokenHash,
       cohortId,
       expiresAt: options?.expiresAt,
-      metadata: options?.metadata || {},
+      metadata: options?.metadata ?? {},
     });
 
     results.push({
