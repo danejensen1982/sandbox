@@ -37,8 +37,9 @@ export async function POST(request: NextRequest) {
 
     // Check if there's a completed session
     const hasCompletedSession = validation.completedSession?.isComplete;
+    const cohort = validation.code.cohort;
 
-    if (hasCompletedSession && !validation.code.cohort.allowRetakes) {
+    if (hasCompletedSession && !cohort?.allowRetakes) {
       // User has completed and cannot retake - give them access to results
       const session = await startAssessmentSession(
         validation.code.id,
@@ -51,7 +52,7 @@ export async function POST(request: NextRequest) {
         sessionToken: session.token,
         hasCompletedSession: true,
         canRetake: false,
-        cohortName: validation.code.cohort.name,
+        cohortName: cohort?.name || 'Unknown',
       });
     }
 
@@ -69,7 +70,7 @@ export async function POST(request: NextRequest) {
         hasCompletedSession: true,
         canRetake: false,
         retakeError: validation.error,
-        cohortName: validation.code.cohort.name,
+        cohortName: cohort?.name || 'Unknown',
       });
     }
 
@@ -93,9 +94,9 @@ export async function POST(request: NextRequest) {
       valid: true,
       sessionToken,
       hasCompletedSession: hasCompletedSession || false,
-      canRetake: validation.code.cohort.allowRetakes,
+      canRetake: cohort?.allowRetakes || false,
       previousAttempts: validation.code.timesUsed,
-      cohortName: validation.code.cohort.name,
+      cohortName: cohort?.name || 'Unknown',
       isResuming: !isNew && !hasCompletedSession,
       currentProgress: session!.isComplete
         ? null
