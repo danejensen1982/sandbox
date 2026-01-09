@@ -9,7 +9,7 @@ export default async function PlatformLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const admin = await getAuthenticatedAdmin();
+  const admin = await getAuthenticatedAdmin({ skipRefresh: true });
 
   // Only platform owners can access this section
   if (!admin || admin.role !== 'platform_owner') {

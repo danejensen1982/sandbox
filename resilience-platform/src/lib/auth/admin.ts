@@ -174,11 +174,15 @@ export async function verifyMfa(pendingToken: string, code: string): Promise<Log
 
 /**
  * Get current authenticated admin from cookies
+ * @param options.skipRefresh - If true, don't try to refresh the session (use in layouts)
  */
-export async function getAuthenticatedAdmin(): Promise<AuthenticatedAdmin | null> {
+export async function getAuthenticatedAdmin(options?: { skipRefresh?: boolean }): Promise<AuthenticatedAdmin | null> {
   const token = await getAdminTokenFromCookie();
 
   if (!token) {
+    // Skip refresh if requested (layouts can't modify cookies)
+    if (options?.skipRefresh) return null;
+
     // Try to refresh
     const refreshToken = await getAdminRefreshTokenFromCookie();
     if (!refreshToken) return null;
@@ -208,6 +212,8 @@ export async function getAuthenticatedAdmin(): Promise<AuthenticatedAdmin | null
 
   const payload = await verifyAdminToken(token);
   if (!payload) {
+    // Skip refresh if requested (layouts can't modify cookies)
+    if (options?.skipRefresh) return null;
     // Token expired, try refresh
     return getAuthenticatedAdmin();
   }
