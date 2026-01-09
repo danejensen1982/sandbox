@@ -1,5 +1,5 @@
 import prisma from '@/lib/db';
-import { Decimal } from '@prisma/client/runtime/library';
+import type { Prisma } from '@prisma/client';
 
 // Scale maximums
 const SCALE_MAX: Record<string, number> = {
@@ -17,7 +17,7 @@ export interface QuestionConfig {
   resilienceAreaId: string;
   questionType: string;
   isReverseScored: boolean;
-  weight: Decimal | number;
+  weight: Prisma.Decimal | number;
 }
 
 export interface AreaScore {
@@ -238,8 +238,8 @@ function getFeedbackForRange(
  */
 function getOverallFeedback(
   content: Array<{
-    minOverallScore: Decimal;
-    maxOverallScore: Decimal;
+    minOverallScore: Prisma.Decimal;
+    maxOverallScore: Prisma.Decimal;
     contentType: string;
     contentBody: string;
   }>,
