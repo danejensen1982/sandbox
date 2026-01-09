@@ -12,7 +12,7 @@ export default async function PlatformLayout({
 
   // Only platform owners can access this section
   if (!admin || admin.role !== 'platform_owner') {
-    redirect('/admin/login');
+    redirect('/admin/login?redirect=/platform');
   }
 
   const navItems = [
