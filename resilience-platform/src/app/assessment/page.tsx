@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { Suspense, useEffect, useState, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -30,7 +30,7 @@ interface SessionState {
   responses: Record<string, number>;
 }
 
-export default function AssessmentPage() {
+function AssessmentContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get('token');
@@ -347,5 +347,26 @@ export default function AssessmentPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+function LoadingFallback() {
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center p-4">
+      <Card className="w-full max-w-md">
+        <CardContent className="py-12 text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-900 mx-auto mb-4" />
+          <p className="text-slate-600">Loading assessment...</p>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+export default function AssessmentPage() {
+  return (
+    <Suspense fallback={<LoadingFallback />}>
+      <AssessmentContent />
+    </Suspense>
   );
 }
