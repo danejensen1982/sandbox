@@ -1,0 +1,320 @@
+// Resilience Assessment Platform Database Schema
+// PostgreSQL via Neon - SOC 2 Compliant
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// =============================================
+// RESILIENCE AREAS (7 areas)
+// =============================================
+
+model ResilienceArea {
+  id           String   @id @default(uuid())
+  slug         String   @unique // e.g., 'emotional', 'physical', 'mental'
+  name         String
+  description  String?  @db.Text
+  displayOrder Int
+  iconName     String?  // For UI icon mapping
+  colorHex     String?  // Brand color for charts
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  questions   Question[]
+  scoreRanges ScoreRange[]
+
+  @@map("resilience_areas")
+}
+
+// =============================================
+// QUESTIONS (10-20 per area, configurable)
+// =============================================
+
+model Question {
+  id               String  @id @default(uuid())
+  resilienceAreaId String
+  questionText     String  @db.Text
+  questionType     String  @default("likert_5") // likert_5, likert_7
+  displayOrder     Int
+  isReverseScored  Boolean @default(false) // Some questions inversely contribute
+  weight           Decimal @default(1.00) @db.Decimal(3, 2) // Question weighting
+  helpText         String? @db.Text // Optional clarification
+  isActive         Boolean @default(true)
+  version          Int     @default(1)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  resilienceArea ResilienceArea @relation(fields: [resilienceAreaId], references: [id])
+  responses      Response[]
+
+  @@unique([resilienceAreaId, displayOrder])
+  @@index([resilienceAreaId, displayOrder])
+  @@map("questions")
+}
+
+// Likert scale options (configurable per question type)
+model LikertScale {
+  id           String @id @default(uuid())
+  scaleType    String // 'likert_5', 'likert_7'
+  value        Int
+  label        String // 'Strongly Disagree', 'Disagree', etc.
+  displayOrder Int
+
+  @@unique([scaleType, value])
+  @@map("likert_scales")
+}
+
+// =============================================
+// SCORING RUBRICS
+// =============================================
+
+model ScoreRange {
+  id               String  @id @default(uuid())
+  resilienceAreaId String
+  minScore         Decimal @db.Decimal(5, 2)
+  maxScore         Decimal @db.Decimal(5, 2)
+  levelName        String  // 'Developing', 'Emerging', 'Strong', 'Exceptional'
+  levelCode        String  // For programmatic access
+  colorHex         String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  resilienceArea  ResilienceArea    @relation(fields: [resilienceAreaId], references: [id])
+  feedbackContent FeedbackContent[]
+
+  @@map("score_ranges")
+}
+
+// Dynamic feedback content based on score ranges
+model FeedbackContent {
+  id           String  @id @default(uuid())
+  scoreRangeId String
+  contentType  String  // 'summary', 'strengths', 'growth_areas', 'recommendations'
+  contentTitle String?
+  contentBody  String  @db.Text // Supports markdown
+  displayOrder Int     @default(0)
+  isActive     Boolean @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  scoreRange ScoreRange @relation(fields: [scoreRangeId], references: [id])
+
+  @@map("feedback_content")
+}
+
+// Overall assessment feedback (combines all 7 areas)
+model OverallFeedbackContent {
+  id              String  @id @default(uuid())
+  minOverallScore Decimal @db.Decimal(5, 2)
+  maxOverallScore Decimal @db.Decimal(5, 2)
+  contentType     String
+  contentTitle    String?
+  contentBody     String  @db.Text
+  displayOrder    Int     @default(0)
+  isActive        Boolean @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("overall_feedback_content")
+}
+
+// =============================================
+// ORGANIZATION / COHORT MANAGEMENT
+// =============================================
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  settings  Json     @default("{}")
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cohorts    Cohort[]
+  adminUsers AdminUser[]
+
+  @@map("organizations")
+}
+
+model Cohort {
+  id                 String    @id @default(uuid())
+  organizationId     String
+  name               String
+  description        String?   @db.Text
+  settings           Json      @default("{}")
+  allowRetakes       Boolean   @default(false)
+  maxRetakes         Int       @default(0) // 0 = unlimited when allowed
+  retakeCooldownDays Int       @default(0)
+  accessStartDate    DateTime?
+  accessEndDate      DateTime?
+  isActive           Boolean   @default(true)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  organization    Organization     @relation(fields: [organizationId], references: [id])
+  assessmentCodes AssessmentCode[]
+
+  @@index([organizationId])
+  @@map("cohorts")
+}
+
+// =============================================
+// ADMIN USERS (Traditional Auth)
+// =============================================
+
+model AdminUser {
+  id                  String    @id @default(uuid())
+  email               String    @unique
+  passwordHash        String
+  firstName           String?
+  lastName            String?
+  role                String    @default("org_admin") // 'platform_owner', 'org_admin', 'cohort_viewer'
+  organizationId      String?   // NULL for platform_owner
+  mfaSecretEncrypted  Bytes?    // TOTP secret, encrypted
+  mfaEnabled          Boolean   @default(false)
+  lastLoginAt         DateTime?
+  failedLoginAttempts Int       @default(0)
+  lockedUntil         DateTime?
+  isActive            Boolean   @default(true)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  organization  Organization?  @relation(fields: [organizationId], references: [id])
+  adminSessions AdminSession[]
+
+  @@index([organizationId])
+  @@map("admin_users")
+}
+
+// Admin session management
+model AdminSession {
+  id               String   @id @default(uuid())
+  adminUserId      String
+  sessionTokenHash String   // SHA-256 of token
+  ipAddress        String?
+  userAgent        String?  @db.Text
+  expiresAt        DateTime
+  createdAt        DateTime @default(now())
+
+  adminUser AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+
+  @@map("admin_sessions")
+}
+
+// =============================================
+// ASSESSMENT TAKERS (Code-Based Auth)
+// =============================================
+
+model AssessmentCode {
+  id                    String    @id @default(uuid())
+  code                  String    @unique // Short code: 'RES-A7K9-M2X4'
+  tokenHash             String    @unique // SHA-256 of full token for URL auth
+  cohortId              String
+  participantIdentifier String?   // Optional: employee ID, student ID (NOT email/name)
+  metadata              Json      @default("{}") // Optional cohort-specific fields
+  status                String    @default("unused") // 'unused', 'started', 'completed', 'expired'
+  timesUsed             Int       @default(0)
+  expiresAt             DateTime?
+  firstAccessedAt       DateTime?
+  lastAccessedAt        DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  cohort             Cohort              @relation(fields: [cohortId], references: [id])
+  assessmentSessions AssessmentSession[]
+
+  @@index([cohortId])
+  @@index([tokenHash])
+  @@index([code])
+  @@map("assessment_codes")
+}
+
+// =============================================
+// ASSESSMENT RESPONSES
+// =============================================
+
+model AssessmentSession {
+  id               String    @id @default(uuid())
+  assessmentCodeId String
+  attemptNumber    Int       @default(1)
+  startedAt        DateTime  @default(now())
+  completedAt      DateTime?
+  currentAreaIndex Int       @default(0) // Progress tracking
+  isComplete       Boolean   @default(false)
+  areaScores       Json?     // {"emotional": 78.5, "physical": 82.0, ...}
+  overallScore     Decimal?  @db.Decimal(5, 2)
+  userAgent        String?   @db.Text
+  ipAddressHash    String?   // Hashed for security
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  assessmentCode AssessmentCode @relation(fields: [assessmentCodeId], references: [id])
+  responses      Response[]
+
+  @@unique([assessmentCodeId, attemptNumber])
+  @@index([assessmentCodeId])
+  @@map("assessment_sessions")
+}
+
+model Response {
+  id                  String   @id @default(uuid())
+  assessmentSessionId String
+  questionId          String
+  responseValue       Int      // 1-5 or 1-7 depending on scale
+  responseTimeMs      Int?     // Time spent on question
+  createdAt           DateTime @default(now())
+
+  assessmentSession AssessmentSession @relation(fields: [assessmentSessionId], references: [id], onDelete: Cascade)
+  question          Question          @relation(fields: [questionId], references: [id])
+
+  @@unique([assessmentSessionId, questionId])
+  @@index([assessmentSessionId])
+  @@map("responses")
+}
+
+// =============================================
+// AUDIT LOGGING (SOC 2 Requirement)
+// =============================================
+
+model AuditLog {
+  id               String   @id @default(uuid())
+  eventType        String   // 'admin_login', 'cohort_created', 'report_exported', etc.
+  eventCategory    String   // 'authentication', 'data_access', 'configuration', 'export'
+  actorType        String   // 'admin', 'system', 'assessment_taker'
+  actorId          String?
+  actorIpAddress   String?
+  actorUserAgent   String?  @db.Text
+  targetType       String?  // 'cohort', 'assessment_code', 'report', etc.
+  targetId         String?
+  eventDescription String   @db.Text
+  eventData        Json?    // Structured event details (NEVER includes PII)
+  success          Boolean  @default(true)
+  errorMessage     String?  @db.Text
+  createdAt        DateTime @default(now())
+
+  @@index([createdAt(sort: Desc)])
+  @@index([actorType, actorId])
+  @@index([eventType, eventCategory])
+  @@map("audit_logs")
+}
+
+// =============================================
+// PLATFORM CONFIGURATION
+// =============================================
+
+model PlatformConfig {
+  id          String   @id @default(uuid())
+  configKey   String   @unique
+  configValue Json
+  encrypted   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("platform_config")
+}
