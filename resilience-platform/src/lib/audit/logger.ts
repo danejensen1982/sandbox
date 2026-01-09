@@ -1,5 +1,6 @@
 import prisma from '@/lib/db';
 import { headers } from 'next/headers';
+import type { Prisma } from '@prisma/client';
 
 export type EventCategory = 'authentication' | 'data_access' | 'configuration' | 'export';
 export type ActorType = 'admin' | 'system' | 'assessment_taker';
@@ -12,7 +13,7 @@ export interface AuditEventInput {
   targetType?: string;
   targetId?: string;
   eventDescription: string;
-  eventData?: Record<string, unknown>;
+  eventData?: Prisma.InputJsonValue;
   success?: boolean;
   errorMessage?: string;
 }
