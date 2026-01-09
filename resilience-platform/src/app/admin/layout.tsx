@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import Image from 'next/image';
 import { redirect } from 'next/navigation';
 import { getAuthenticatedAdmin, logoutAdmin } from '@/lib/auth/admin';
 import { Button } from '@/components/ui/button';
@@ -25,8 +26,15 @@ export default async function AdminLayout({
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16 items-center">
             <div className="flex items-center gap-8">
-              <Link href="/admin" className="font-bold text-xl text-slate-900">
-                Resilience Admin
+              <Link href="/admin" className="flex items-center">
+                <Image
+                  src="/third-factor-logo-dark.png"
+                  alt="Third Factor"
+                  width={140}
+                  height={40}
+                  className="h-8 w-auto"
+                  priority
+                />
               </Link>
               <div className="hidden md:flex items-center gap-6">
                 <Link

@@ -17,6 +17,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 interface Organization {
   id: string;
@@ -27,8 +35,8 @@ export default function NewCohortPage() {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
-  const [isPlatformOwner, setIsPlatformOwner] = useState(false);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [isLoadingOrgs, setIsLoadingOrgs] = useState(true);
 
   // Form state
   const [name, setName] = useState('');
@@ -40,31 +48,70 @@ export default function NewCohortPage() {
   const [accessStartDate, setAccessStartDate] = useState('');
   const [accessEndDate, setAccessEndDate] = useState('');
 
-  // Check if platform owner and load organizations
-  useEffect(() => {
-    const checkAdminAndLoadOrgs = async () => {
-      try {
-        const response = await fetch('/api/v1/admin/me');
-        if (response.ok) {
-          const data = await response.json();
-          setIsPlatformOwner(data.admin.role === 'platform_owner');
+  // New organization dialog state
+  const [showNewOrgDialog, setShowNewOrgDialog] = useState(false);
+  const [newOrgName, setNewOrgName] = useState('');
+  const [isCreatingOrg, setIsCreatingOrg] = useState(false);
+  const [newOrgError, setNewOrgError] = useState('');
 
-          if (data.admin.role === 'platform_owner') {
-            // Load organizations for platform owners
-            const orgsResponse = await fetch('/api/v1/admin/organizations');
-            if (orgsResponse.ok) {
-              const orgsData = await orgsResponse.json();
-              setOrganizations(orgsData.organizations || []);
-            }
-          }
+  // Load organizations
+  useEffect(() => {
+    const loadOrganizations = async () => {
+      try {
+        const orgsResponse = await fetch('/api/v1/admin/organizations');
+        if (orgsResponse.ok) {
+          const orgsData = await orgsResponse.json();
+          setOrganizations(orgsData.organizations || []);
         }
       } catch {
         // Ignore errors, use default state
+      } finally {
+        setIsLoadingOrgs(false);
       }
     };
 
-    checkAdminAndLoadOrgs();
+    loadOrganizations();
   }, []);
+
+  const handleCreateOrganization = async () => {
+    if (!newOrgName.trim()) return;
+
+    setIsCreatingOrg(true);
+    setNewOrgError('');
+
+    try {
+      const response = await fetch('/api/v1/admin/organizations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newOrgName.trim() }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setNewOrgError(data.error || 'Failed to create organization');
+        return;
+      }
+
+      // Add the new organization to the list and select it
+      setOrganizations((prev) => [...prev, data.organization].sort((a, b) => a.name.localeCompare(b.name)));
+      setOrganizationId(data.organization.id);
+      setShowNewOrgDialog(false);
+      setNewOrgName('');
+    } catch {
+      setNewOrgError('Failed to create organization. Please try again.');
+    } finally {
+      setIsCreatingOrg(false);
+    }
+  };
+
+  const handleOrganizationChange = (value: string) => {
+    if (value === 'new') {
+      setShowNewOrgDialog(true);
+    } else {
+      setOrganizationId(value);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -80,7 +127,7 @@ export default function NewCohortPage() {
         body: JSON.stringify({
           name,
           description,
-          organizationId: isPlatformOwner ? organizationId : undefined,
+          organizationId: organizationId || undefined,
           allowRetakes,
           maxRetakes: allowRetakes ? maxRetakes : 0,
           retakeCooldownDays: allowRetakes ? retakeCooldownDays : 0,
@@ -131,24 +178,25 @@ export default function NewCohortPage() {
               </Alert>
             )}
 
-            {/* Organization Selection (Platform Owners Only) */}
-            {isPlatformOwner && (
-              <div className="space-y-2">
-                <Label htmlFor="organization">Organization</Label>
-                <Select value={organizationId} onValueChange={setOrganizationId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select an organization" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {organizations.map((org) => (
-                      <SelectItem key={org.id} value={org.id}>
-                        {org.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+            {/* Organization Selection */}
+            <div className="space-y-2">
+              <Label htmlFor="organization">Organization *</Label>
+              <Select value={organizationId} onValueChange={handleOrganizationChange} disabled={isLoadingOrgs}>
+                <SelectTrigger>
+                  <SelectValue placeholder={isLoadingOrgs ? "Loading organizations..." : "Select an organization"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {organizations.map((org) => (
+                    <SelectItem key={org.id} value={org.id}>
+                      {org.name}
+                    </SelectItem>
+                  ))}
+                  <SelectItem value="new" className="text-primary font-medium">
+                    + Add new organization
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
             {/* Cohort Name */}
             <div className="space-y-2">
@@ -244,7 +292,7 @@ export default function NewCohortPage() {
 
             {/* Submit */}
             <div className="flex gap-4">
-              <Button type="submit" disabled={isSubmitting || !name.trim()}>
+              <Button type="submit" disabled={isSubmitting || !name.trim() || !organizationId}>
                 {isSubmitting ? 'Creating...' : 'Create Cohort'}
               </Button>
               <Link href="/admin/cohorts">
@@ -256,6 +304,53 @@ export default function NewCohortPage() {
           </form>
         </CardContent>
       </Card>
+
+      {/* New Organization Dialog */}
+      <Dialog open={showNewOrgDialog} onOpenChange={setShowNewOrgDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create New Organization</DialogTitle>
+            <DialogDescription>
+              Add a new organization to the platform. You can then create cohorts for this organization.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {newOrgError && (
+              <Alert variant="destructive">
+                <AlertDescription>{newOrgError}</AlertDescription>
+              </Alert>
+            )}
+            <div className="space-y-2">
+              <Label htmlFor="newOrgName">Organization Name</Label>
+              <Input
+                id="newOrgName"
+                value={newOrgName}
+                onChange={(e) => setNewOrgName(e.target.value)}
+                placeholder="e.g., Acme Corporation"
+                autoFocus
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowNewOrgDialog(false);
+                setNewOrgName('');
+                setNewOrgError('');
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCreateOrganization}
+              disabled={isCreatingOrg || !newOrgName.trim()}
+            >
+              {isCreatingOrg ? 'Creating...' : 'Create Organization'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

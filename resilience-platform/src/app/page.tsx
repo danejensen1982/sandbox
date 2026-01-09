@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
@@ -9,7 +10,16 @@ export default function Home() {
       <nav className="border-b bg-white/80 backdrop-blur-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16 items-center">
-            <div className="font-bold text-xl text-slate-900">Resilience Platform</div>
+            <Link href="/" className="flex items-center">
+              <Image
+                src="/third-factor-logo-dark.png"
+                alt="Third Factor"
+                width={140}
+                height={40}
+                className="h-8 w-auto"
+                priority
+              />
+            </Link>
             <div className="flex items-center gap-4">
               <Link href="/assess">
                 <Button variant="ghost">Take Assessment</Button>
@@ -43,21 +53,20 @@ export default function Home() {
 
         {/* Features */}
         <div className="grid md:grid-cols-3 gap-8 mb-16">
-          <Card>
+          <Card className="gap-3">
             <CardHeader>
-              <CardTitle className="text-lg">7 Resilience Areas</CardTitle>
+              <CardTitle className="text-xl font-sans">Comprehensive Resilience Inventory</CardTitle>
             </CardHeader>
             <CardContent>
               <CardDescription>
-                Explore emotional, physical, mental, social, spiritual, professional,
-                and financial dimensions of resilience.
+                Explore the environmental, physical, social, cognitive, and emotional dimensions of resilience.                and financial dimensions of resilience.
               </CardDescription>
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="gap-3">
             <CardHeader>
-              <CardTitle className="text-lg">Personalized Results</CardTitle>
+              <CardTitle className="text-xl font-sans">Personalized Results</CardTitle>
             </CardHeader>
             <CardContent>
               <CardDescription>
@@ -67,9 +76,9 @@ export default function Home() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="gap-3">
             <CardHeader>
-              <CardTitle className="text-lg">Secure & Private</CardTitle>
+              <CardTitle className="text-xl font-sans">Secure & Private</CardTitle>
             </CardHeader>
             <CardContent>
               <CardDescription>
@@ -87,14 +96,14 @@ export default function Home() {
           </h2>
           <div className="grid md:grid-cols-4 gap-6">
             {[
-              { step: 1, title: 'Get Your Code', desc: 'Receive a unique access code from your organization' },
-              { step: 2, title: 'Take Assessment', desc: 'Answer questions across 7 resilience areas' },
+              { step: 1, title: 'Get Your Code', desc: 'Receive an access code from your organization' },
+              { step: 2, title: 'Take The Assessment', desc: 'Answer questions across seven resilience areas' },
               { step: 3, title: 'View Results', desc: 'See your personalized resilience profile' },
               { step: 4, title: 'Track Progress', desc: 'Return anytime to review or retake' },
             ].map((item) => (
               <div key={item.step} className="text-center">
-                <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                  <span className="text-xl font-bold text-blue-600">{item.step}</span>
+                <div className="w-12 h-12 bg-[#00B189]/10 rounded-full flex items-center justify-center mx-auto mb-3">
+                  <span className="text-xl font-bold font-sans text-[#00B189]">{item.step}</span>
                 </div>
                 <h3 className="font-medium text-slate-900 mb-1">{item.title}</h3>
                 <p className="text-sm text-slate-500">{item.desc}</p>
@@ -117,7 +126,7 @@ export default function Home() {
       {/* Footer */}
       <footer className="border-t mt-16 py-8 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-sm text-slate-500">
-          <p>Resilience Assessment Platform - Empowering Leaders Through Self-Discovery</p>
+          <p>&copy; {new Date().getFullYear()} Third Factor. All rights reserved.</p>
         </div>
       </footer>
     </div>

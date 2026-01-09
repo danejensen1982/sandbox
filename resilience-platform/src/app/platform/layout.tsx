@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import { getAuthenticatedAdmin } from '@/lib/auth/admin';
 import { Button } from '@/components/ui/button';
 
@@ -30,8 +31,15 @@ export default async function PlatformLayout({
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center gap-8">
-              <Link href="/platform" className="font-bold text-lg">
-                Platform Admin
+              <Link href="/platform" className="flex items-center">
+                <Image
+                  src="/third-factor-logo-light.png"
+                  alt="Third Factor"
+                  width={140}
+                  height={40}
+                  className="h-8 w-auto"
+                  priority
+                />
               </Link>
               <nav className="hidden md:flex items-center gap-1">
                 {navItems.map((item) => (

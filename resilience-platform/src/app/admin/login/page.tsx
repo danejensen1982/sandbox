@@ -3,6 +3,7 @@
 import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -84,7 +85,17 @@ function LoginForm() {
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center p-4">
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
-            <CardTitle className="text-2xl font-bold text-slate-900">
+            <div className="flex justify-center mb-4">
+              <Image
+                src="/third-factor-logo-dark.png"
+                alt="Third Factor"
+                width={180}
+                height={50}
+                className="h-12 w-auto"
+                priority
+              />
+            </div>
+            <CardTitle className="text-2xl font-bold">
               Two-Factor Authentication
             </CardTitle>
             <CardDescription>
@@ -141,7 +152,17 @@ function LoginForm() {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold text-slate-900">Admin Login</CardTitle>
+          <div className="flex justify-center mb-4">
+            <Image
+              src="/third-factor-logo-dark.png"
+              alt="Third Factor"
+              width={180}
+              height={50}
+              className="h-12 w-auto"
+              priority
+            />
+          </div>
+          <CardTitle className="text-2xl font-bold">Admin Login</CardTitle>
           <CardDescription>Sign in to manage your organization&apos;s assessments</CardDescription>
         </CardHeader>
         <CardContent>

@@ -32,18 +32,14 @@ export async function POST(request: NextRequest) {
     // Determine organization ID
     let targetOrgId: string;
 
-    if (admin.role === 'platform_owner') {
-      // Platform owners can create cohorts for any org
-      if (!organizationId) {
-        return NextResponse.json({ error: 'Organization ID is required' }, { status: 400 });
-      }
+    if (organizationId) {
+      // Use provided organization ID
       targetOrgId = organizationId;
-    } else {
-      // Org admins can only create cohorts for their own org
-      if (!admin.organizationId) {
-        return NextResponse.json({ error: 'Admin not associated with an organization' }, { status: 400 });
-      }
+    } else if (admin.organizationId) {
+      // Fall back to admin's organization
       targetOrgId = admin.organizationId;
+    } else {
+      return NextResponse.json({ error: 'Organization ID is required' }, { status: 400 });
     }
 
     // Verify organization exists

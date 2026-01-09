@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -73,10 +74,20 @@ export default function AssessPage() {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold text-slate-900">
+          <div className="flex justify-center mb-4">
+            <Image
+              src="/third-factor-logo-dark.png"
+              alt="Third Factor"
+              width={180}
+              height={50}
+              className="h-12 w-auto"
+              priority
+            />
+          </div>
+          <CardTitle className="text-2xl font-bold">
             Resilience Assessment
           </CardTitle>
-          <CardDescription className="text-slate-600">
+          <CardDescription>
             Enter your assessment code to begin
           </CardDescription>
         </CardHeader>
