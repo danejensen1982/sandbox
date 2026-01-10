@@ -75,6 +75,11 @@ export async function POST(request: NextRequest) {
       responsesMap[r.questionId] = r.responseValue;
     });
 
+    // Check if there are any active demographic questions
+    const demographicQuestionCount = await prisma.demographicQuestion.count({
+      where: { isActive: true },
+    });
+
     return NextResponse.json({
       sessionId: currentSession.id,
       areas: formattedAreas,
@@ -83,6 +88,8 @@ export async function POST(request: NextRequest) {
       },
       existingResponses: responsesMap,
       isComplete: currentSession.isComplete,
+      demographicsCompleted: currentSession.demographicsCompleted,
+      hasDemographics: demographicQuestionCount > 0,
     });
   } catch (error) {
     console.error('Error starting assessment:', error);

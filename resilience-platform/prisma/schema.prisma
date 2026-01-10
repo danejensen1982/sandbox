@@ -240,22 +240,24 @@ model AssessmentCode {
 // =============================================
 
 model AssessmentSession {
-  id               String    @id @default(uuid())
-  assessmentCodeId String
-  attemptNumber    Int       @default(1)
-  startedAt        DateTime  @default(now())
-  completedAt      DateTime?
-  currentAreaIndex Int       @default(0) // Progress tracking
-  isComplete       Boolean   @default(false)
-  areaScores       Json?     // {"emotional": 78.5, "physical": 82.0, ...}
-  overallScore     Decimal?  @db.Decimal(5, 2)
-  userAgent        String?   @db.Text
-  ipAddressHash    String?   // Hashed for security
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  id                    String    @id @default(uuid())
+  assessmentCodeId      String
+  attemptNumber         Int       @default(1)
+  startedAt             DateTime  @default(now())
+  completedAt           DateTime?
+  currentAreaIndex      Int       @default(0) // Progress tracking
+  demographicsCompleted Boolean   @default(false) // Pre-assessment demographics
+  isComplete            Boolean   @default(false)
+  areaScores            Json?     // {"emotional": 78.5, "physical": 82.0, ...}
+  overallScore          Decimal?  @db.Decimal(5, 2)
+  userAgent             String?   @db.Text
+  ipAddressHash         String?   // Hashed for security
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
-  assessmentCode AssessmentCode @relation(fields: [assessmentCodeId], references: [id])
-  responses      Response[]
+  assessmentCode       AssessmentCode        @relation(fields: [assessmentCodeId], references: [id])
+  responses            Response[]
+  demographicResponses DemographicResponse[]
 
   @@unique([assessmentCodeId, attemptNumber])
   @@index([assessmentCodeId])
@@ -302,6 +304,65 @@ model AuditLog {
   @@index([actorType, actorId])
   @@index([eventType, eventCategory])
   @@map("audit_logs")
+}
+
+// =============================================
+// DEMOGRAPHIC QUESTIONS (Configurable by Admin)
+// =============================================
+
+model DemographicQuestion {
+  id           String   @id @default(uuid())
+  slug         String   @unique // e.g., 'age', 'gender', 'job_function'
+  questionText String
+  questionType String   @default("select") // 'select', 'multiselect', 'text'
+  displayOrder Int
+  isRequired   Boolean  @default(true)
+  isActive     Boolean  @default(true)
+  helpText     String?  @db.Text
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  options   DemographicOption[]
+  responses DemographicResponse[]
+
+  @@map("demographic_questions")
+}
+
+model DemographicOption {
+  id           String   @id @default(uuid())
+  questionId   String
+  value        String   // Stored value
+  label        String   // Display label
+  displayOrder Int
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  question  DemographicQuestion   @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  responses DemographicResponse[]
+
+  @@unique([questionId, displayOrder])
+  @@index([questionId])
+  @@map("demographic_options")
+}
+
+model DemographicResponse {
+  id                  String   @id @default(uuid())
+  assessmentSessionId String
+  questionId          String
+  optionId            String?  // For select/multiselect
+  textValue           String?  // For free-text responses
+  createdAt           DateTime @default(now())
+
+  assessmentSession AssessmentSession   @relation(fields: [assessmentSessionId], references: [id], onDelete: Cascade)
+  question          DemographicQuestion @relation(fields: [questionId], references: [id])
+  option            DemographicOption?  @relation(fields: [optionId], references: [id])
+
+  @@unique([assessmentSessionId, questionId])
+  @@index([assessmentSessionId])
+  @@index([questionId])
+  @@index([optionId])
+  @@map("demographic_responses")
 }
 
 // =============================================

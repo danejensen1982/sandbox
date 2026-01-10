@@ -103,3 +103,103 @@ export async function PUT(
     return NextResponse.json({ error: 'Failed to update area' }, { status: 500 });
   }
 }
+
+// DELETE /api/v1/platform/areas/[areaId] - Delete a resilience area
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ areaId: string }> }
+) {
+  try {
+    const admin = await getAuthenticatedAdmin();
+    if (!admin || admin.role !== 'platform_owner') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { areaId } = await params;
+
+    // Check if area exists
+    const area = await prisma.resilienceArea.findUnique({
+      where: { id: areaId },
+      include: {
+        _count: {
+          select: { questions: true },
+        },
+        questions: {
+          include: {
+            _count: {
+              select: { responses: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (!area) {
+      return NextResponse.json({ error: 'Area not found' }, { status: 404 });
+    }
+
+    // Check if any questions have responses
+    const hasResponses = area.questions.some((q) => q._count.responses > 0);
+
+    if (hasResponses) {
+      // Soft delete - just mark as inactive
+      await prisma.resilienceArea.update({
+        where: { id: areaId },
+        data: { isActive: false },
+      });
+
+      await logAuditEvent({
+        eventType: 'resilience_area_deactivated',
+        eventCategory: 'configuration',
+        actorType: 'admin',
+        actorId: admin.id,
+        targetType: 'resilience_area',
+        targetId: area.id,
+        eventDescription: `Deactivated resilience area "${area.name}" (has existing responses)`,
+        eventData: { areaName: area.name },
+      });
+
+      return NextResponse.json({
+        success: true,
+        deactivated: true,
+        message: 'Area deactivated (has existing assessment responses)'
+      });
+    }
+
+    // Hard delete - remove the area and all related data
+    await prisma.$transaction([
+      // Delete feedback content for score ranges
+      prisma.feedbackContent.deleteMany({
+        where: { scoreRange: { resilienceAreaId: areaId } },
+      }),
+      // Delete score ranges
+      prisma.scoreRange.deleteMany({
+        where: { resilienceAreaId: areaId },
+      }),
+      // Delete questions
+      prisma.question.deleteMany({
+        where: { resilienceAreaId: areaId },
+      }),
+      // Delete the area
+      prisma.resilienceArea.delete({
+        where: { id: areaId },
+      }),
+    ]);
+
+    await logAuditEvent({
+      eventType: 'resilience_area_deleted',
+      eventCategory: 'configuration',
+      actorType: 'admin',
+      actorId: admin.id,
+      targetType: 'resilience_area',
+      targetId: areaId,
+      eventDescription: `Deleted resilience area "${area.name}"`,
+      eventData: { areaName: area.name },
+    });
+
+    return NextResponse.json({ success: true, deleted: true });
+  } catch (error) {
+    console.error('Error deleting area:', error);
+    return NextResponse.json({ error: 'Failed to delete area' }, { status: 500 });
+  }
+}
