@@ -59,6 +59,9 @@ export default function QuestionsManagementPage() {
   const [formIsReverse, setFormIsReverse] = useState(false);
   const [formIsActive, setFormIsActive] = useState(true);
 
+  // Reordering state
+  const [isReordering, setIsReordering] = useState(false);
+
   const loadData = async () => {
     try {
       const [areaRes, questionsRes] = await Promise.all([
@@ -160,6 +163,45 @@ export default function QuestionsManagementPage() {
       loadData();
     } catch {
       setError('Failed to delete question');
+    }
+  };
+
+  const handleMoveQuestion = async (questionId: string, direction: 'up' | 'down') => {
+    const currentIndex = questions.findIndex((q) => q.id === questionId);
+    if (currentIndex === -1) return;
+
+    const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+    if (newIndex < 0 || newIndex >= questions.length) return;
+
+    // Reorder locally first for immediate feedback
+    const newQuestions = [...questions];
+    const [movedQuestion] = newQuestions.splice(currentIndex, 1);
+    newQuestions.splice(newIndex, 0, movedQuestion);
+    setQuestions(newQuestions);
+
+    // Send to server
+    setIsReordering(true);
+    setError('');
+
+    try {
+      const response = await fetch(`/api/v1/platform/areas/${areaId}/questions`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderedIds: newQuestions.map((q) => q.id),
+        }),
+      });
+
+      if (!response.ok) {
+        // Revert on error
+        loadData();
+        setError('Failed to reorder questions');
+      }
+    } catch {
+      loadData();
+      setError('Failed to reorder questions');
+    } finally {
+      setIsReordering(false);
     }
   };
 
@@ -290,7 +332,7 @@ export default function QuestionsManagementPage() {
         <CardHeader>
           <CardTitle>Questions ({questions.length})</CardTitle>
           <CardDescription>
-            Questions are displayed in order. Drag to reorder (coming soon).
+            Questions are displayed in order. Use the arrows to reorder.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -309,6 +351,27 @@ export default function QuestionsManagementPage() {
                   className={`p-4 border rounded-lg ${!question.isActive ? 'bg-slate-50 opacity-60' : ''}`}
                 >
                   <div className="flex items-start justify-between gap-4">
+                    {/* Reorder buttons */}
+                    <div className="flex flex-col gap-0.5 shrink-0">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-5 w-5 p-0"
+                        disabled={index === 0 || isReordering}
+                        onClick={() => handleMoveQuestion(question.id, 'up')}
+                      >
+                        <span className="text-xs">▲</span>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-5 w-5 p-0"
+                        disabled={index === questions.length - 1 || isReordering}
+                        onClick={() => handleMoveQuestion(question.id, 'down')}
+                      >
+                        <span className="text-xs">▼</span>
+                      </Button>
+                    </div>
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-sm font-medium text-slate-400">

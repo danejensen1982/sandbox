@@ -95,3 +95,59 @@ export async function POST(
     return NextResponse.json({ error: 'Failed to create question' }, { status: 500 });
   }
 }
+
+// PATCH /api/v1/platform/areas/[areaId]/questions - Reorder questions
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ areaId: string }> }
+) {
+  try {
+    const admin = await getAuthenticatedAdmin();
+    if (!admin || admin.role !== 'platform_owner') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { areaId } = await params;
+    const body = await request.json();
+    const { orderedIds } = body;
+
+    if (!orderedIds || !Array.isArray(orderedIds)) {
+      return NextResponse.json({ error: 'orderedIds array is required' }, { status: 400 });
+    }
+
+    // Verify area exists
+    const area = await prisma.resilienceArea.findUnique({
+      where: { id: areaId },
+    });
+
+    if (!area) {
+      return NextResponse.json({ error: 'Area not found' }, { status: 404 });
+    }
+
+    // Update display order for each question
+    await prisma.$transaction(
+      orderedIds.map((id: string, index: number) =>
+        prisma.question.update({
+          where: { id },
+          data: { displayOrder: index + 1 },
+        })
+      )
+    );
+
+    await logAuditEvent({
+      eventType: 'questions_reordered',
+      eventCategory: 'configuration',
+      actorType: 'admin',
+      actorId: admin.id,
+      targetType: 'resilience_area',
+      targetId: areaId,
+      eventDescription: `Reordered questions in area "${area.name}"`,
+      eventData: { areaId, questionCount: orderedIds.length },
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Error reordering questions:', error);
+    return NextResponse.json({ error: 'Failed to reorder questions' }, { status: 500 });
+  }
+}
