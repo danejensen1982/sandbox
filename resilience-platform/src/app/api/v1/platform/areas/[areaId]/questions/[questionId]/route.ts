@@ -3,6 +3,48 @@ import { getAuthenticatedAdmin } from '@/lib/auth/admin';
 import prisma from '@/lib/db';
 import { logAuditEvent } from '@/lib/audit/logger';
 
+// GET /api/v1/platform/areas/[areaId]/questions/[questionId] - Get a question with sub-areas
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ areaId: string; questionId: string }> }
+) {
+  try {
+    const admin = await getAuthenticatedAdmin();
+    if (!admin || admin.role !== 'platform_owner') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { areaId, questionId } = await params;
+
+    const question = await prisma.question.findFirst({
+      where: { id: questionId, resilienceAreaId: areaId },
+      include: {
+        subAreas: {
+          include: {
+            subArea: {
+              select: {
+                id: true,
+                name: true,
+                slug: true,
+                colorHex: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!question) {
+      return NextResponse.json({ error: 'Question not found' }, { status: 404 });
+    }
+
+    return NextResponse.json({ question });
+  } catch (error) {
+    console.error('Error fetching question:', error);
+    return NextResponse.json({ error: 'Failed to fetch question' }, { status: 500 });
+  }
+}
+
 // PUT /api/v1/platform/areas/[areaId]/questions/[questionId] - Update a question
 export async function PUT(
   request: NextRequest,
@@ -16,7 +58,7 @@ export async function PUT(
 
     const { areaId, questionId } = await params;
     const body = await request.json();
-    const { questionText, helpText, weight, isReverseScored, isActive, displayOrder } = body;
+    const { questionText, helpText, weight, isReverseScored, isActive, displayOrder, subAreaIds } = body;
 
     if (!questionText?.trim()) {
       return NextResponse.json({ error: 'Question text is required' }, { status: 400 });
@@ -31,17 +73,57 @@ export async function PUT(
       return NextResponse.json({ error: 'Question not found' }, { status: 404 });
     }
 
-    // Update the question
-    const question = await prisma.question.update({
-      where: { id: questionId },
-      data: {
-        questionText: questionText.trim(),
-        helpText: helpText?.trim() || null,
-        weight: weight ?? existingQuestion.weight,
-        isReverseScored: isReverseScored ?? existingQuestion.isReverseScored,
-        isActive: isActive ?? existingQuestion.isActive,
-        displayOrder: displayOrder ?? existingQuestion.displayOrder,
-      },
+    // Update the question and sub-area assignments in a transaction
+    const question = await prisma.$transaction(async (tx) => {
+      // Update the question
+      const updatedQuestion = await tx.question.update({
+        where: { id: questionId },
+        data: {
+          questionText: questionText.trim(),
+          helpText: helpText?.trim() || null,
+          weight: weight ?? existingQuestion.weight,
+          isReverseScored: isReverseScored ?? existingQuestion.isReverseScored,
+          isActive: isActive ?? existingQuestion.isActive,
+          displayOrder: displayOrder ?? existingQuestion.displayOrder,
+        },
+      });
+
+      // Update sub-area assignments if provided
+      if (Array.isArray(subAreaIds)) {
+        // Delete existing assignments
+        await tx.questionSubArea.deleteMany({
+          where: { questionId },
+        });
+
+        // Create new assignments
+        if (subAreaIds.length > 0) {
+          await tx.questionSubArea.createMany({
+            data: subAreaIds.map((subAreaId: string) => ({
+              questionId,
+              subAreaId,
+            })),
+          });
+        }
+      }
+
+      // Fetch the updated question with sub-areas
+      return tx.question.findUnique({
+        where: { id: questionId },
+        include: {
+          subAreas: {
+            include: {
+              subArea: {
+                select: {
+                  id: true,
+                  name: true,
+                  slug: true,
+                  colorHex: true,
+                },
+              },
+            },
+          },
+        },
+      });
     });
 
     await logAuditEvent({
@@ -50,9 +132,9 @@ export async function PUT(
       actorType: 'admin',
       actorId: admin.id,
       targetType: 'question',
-      targetId: question.id,
+      targetId: questionId,
       eventDescription: `Updated question`,
-      eventData: { areaId, questionText: questionText.substring(0, 50) },
+      eventData: { areaId, questionText: questionText.substring(0, 50), subAreaIds },
     });
 
     return NextResponse.json({ question });

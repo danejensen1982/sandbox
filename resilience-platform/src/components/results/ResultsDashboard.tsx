@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -20,6 +21,8 @@ export function ResultsDashboard({
   onDownloadPdf,
   isGeneratingPdf = false,
 }: ResultsDashboardProps) {
+  const [linkCopied, setLinkCopied] = useState(false);
+
   const radarData = results.areaScores.map((area) => ({
     name: area.areaName,
     score: Math.round(area.score),
@@ -34,6 +37,16 @@ export function ResultsDashboard({
     });
   };
 
+  const handleCopyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy link:', err);
+    }
+  };
+
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -44,11 +57,16 @@ export function ResultsDashboard({
           </h1>
           <p className="text-slate-600 mt-1">Completed on {formatDate(completedAt)}</p>
         </div>
-        {onDownloadPdf && (
-          <Button onClick={onDownloadPdf} disabled={isGeneratingPdf} variant="outline">
-            {isGeneratingPdf ? 'Generating PDF...' : 'Download PDF Report'}
+        <div className="flex gap-2">
+          <Button onClick={handleCopyLink} variant="outline">
+            {linkCopied ? 'Link Copied!' : 'Copy Link to Results'}
           </Button>
-        )}
+          {onDownloadPdf && (
+            <Button onClick={onDownloadPdf} disabled={isGeneratingPdf} variant="outline">
+              {isGeneratingPdf ? 'Generating PDF...' : 'Download PDF Report'}
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Overall Score Card */}
@@ -110,13 +128,69 @@ export function ResultsDashboard({
         </h2>
         <div className="grid md:grid-cols-2 gap-4">
           {results.areaScores.map((area) => (
-            <ScoreCard
-              key={area.areaId}
-              title={area.areaName}
-              score={Math.round(area.score)}
-              level={area.level}
-              description={area.feedback.summary}
-            />
+            <Card key={area.areaId}>
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-lg">{area.areaName}</CardTitle>
+                  <div
+                    className="px-2 py-0.5 rounded-full text-xs font-medium text-white"
+                    style={{ backgroundColor: area.level.color }}
+                  >
+                    {area.level.name}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-3xl font-bold" style={{ color: area.level.color }}>
+                    {Math.round(area.score)}
+                  </span>
+                  <span className="text-sm text-slate-500">/ 100</span>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <ScoreBar score={Math.round(area.score)} color={area.level.color} />
+
+                {/* Sub-area scores */}
+                {area.subAreaScores && area.subAreaScores.length > 0 && (
+                  <div className="mt-4 space-y-2">
+                    <h5 className="text-sm font-medium text-slate-700">Sub-area Breakdown</h5>
+                    {area.subAreaScores.map((subArea) => (
+                      <div key={subArea.subAreaId} className="flex items-center justify-between text-sm">
+                        <span className="text-slate-600">{subArea.subAreaName}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{Math.round(subArea.score)}</span>
+                          <span
+                            className="text-xs px-1.5 py-0.5 rounded"
+                            style={{
+                              backgroundColor: subArea.colorHex ? `${subArea.colorHex}20` : '#e2e8f0',
+                              color: subArea.colorHex || '#475569',
+                            }}
+                          >
+                            {subArea.levelName}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Conditional feedback */}
+                {area.conditionalFeedback && (
+                  <div className="mt-4 p-3 bg-slate-50 rounded-lg">
+                    <div
+                      className="prose prose-sm prose-slate max-w-none"
+                      dangerouslySetInnerHTML={{ __html: area.conditionalFeedback }}
+                    />
+                  </div>
+                )}
+
+                {/* Summary feedback (fallback if no conditional) */}
+                {!area.conditionalFeedback && area.feedback.summary && (
+                  <div className="mt-4 p-3 bg-slate-50 rounded-lg">
+                    <p className="text-sm text-slate-600">{area.feedback.summary}</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           ))}
         </div>
       </div>

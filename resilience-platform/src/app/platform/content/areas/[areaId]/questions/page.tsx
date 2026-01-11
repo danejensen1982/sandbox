@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -19,6 +20,17 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+
+interface SubArea {
+  id: string;
+  name: string;
+  slug: string;
+  colorHex: string | null;
+}
+
+interface QuestionSubArea {
+  subArea: SubArea;
+}
 
 interface Question {
   id: string;
@@ -29,6 +41,7 @@ interface Question {
   weight: number;
   helpText: string | null;
   isActive: boolean;
+  subAreas?: QuestionSubArea[];
 }
 
 interface AreaInfo {
@@ -44,6 +57,7 @@ export default function QuestionsManagementPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [area, setArea] = useState<AreaInfo | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
+  const [availableSubAreas, setAvailableSubAreas] = useState<SubArea[]>([]);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
@@ -58,15 +72,17 @@ export default function QuestionsManagementPage() {
   const [formWeight, setFormWeight] = useState(1);
   const [formIsReverse, setFormIsReverse] = useState(false);
   const [formIsActive, setFormIsActive] = useState(true);
+  const [formSubAreaIds, setFormSubAreaIds] = useState<string[]>([]);
 
   // Reordering state
   const [isReordering, setIsReordering] = useState(false);
 
   const loadData = async () => {
     try {
-      const [areaRes, questionsRes] = await Promise.all([
+      const [areaRes, questionsRes, subAreasRes] = await Promise.all([
         fetch(`/api/v1/platform/areas/${areaId}`),
         fetch(`/api/v1/platform/areas/${areaId}/questions`),
+        fetch(`/api/v1/platform/areas/${areaId}/sub-areas`),
       ]);
 
       if (areaRes.ok) {
@@ -77,6 +93,11 @@ export default function QuestionsManagementPage() {
       if (questionsRes.ok) {
         const questionsData = await questionsRes.json();
         setQuestions(questionsData.questions);
+      }
+
+      if (subAreasRes.ok) {
+        const subAreasData = await subAreasRes.json();
+        setAvailableSubAreas(subAreasData.subAreas.filter((sa: SubArea & { isActive: boolean }) => sa.isActive));
       }
     } catch {
       setError('Failed to load data');
@@ -97,6 +118,7 @@ export default function QuestionsManagementPage() {
       setFormWeight(Number(question.weight));
       setFormIsReverse(question.isReverseScored);
       setFormIsActive(question.isActive);
+      setFormSubAreaIds(question.subAreas?.map((sa) => sa.subArea.id) || []);
     } else {
       setEditingQuestion(null);
       setFormText('');
@@ -104,8 +126,17 @@ export default function QuestionsManagementPage() {
       setFormWeight(1);
       setFormIsReverse(false);
       setFormIsActive(true);
+      setFormSubAreaIds([]);
     }
     setEditDialogOpen(true);
+  };
+
+  const toggleSubArea = (subAreaId: string) => {
+    setFormSubAreaIds((prev) =>
+      prev.includes(subAreaId)
+        ? prev.filter((id) => id !== subAreaId)
+        : [...prev, subAreaId]
+    );
   };
 
   const handleSaveQuestion = async () => {
@@ -126,6 +157,7 @@ export default function QuestionsManagementPage() {
           weight: formWeight,
           isReverseScored: formIsReverse,
           isActive: formIsActive,
+          subAreaIds: formSubAreaIds,
         }),
       });
 
@@ -235,7 +267,7 @@ export default function QuestionsManagementPage() {
           <DialogTrigger asChild>
             <Button onClick={() => openEditDialog(null)}>Add Question</Button>
           </DialogTrigger>
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>
                 {editingQuestion ? 'Edit Question' : 'Add New Question'}
@@ -300,6 +332,50 @@ export default function QuestionsManagementPage() {
                   </div>
                 </div>
               </div>
+
+              {/* Sub-Area Assignment */}
+              {availableSubAreas.length > 0 && (
+                <div className="space-y-2">
+                  <Label>Sub-Area Assignment</Label>
+                  <p className="text-xs text-slate-500 mb-2">
+                    Assign this question to one or more sub-areas for granular scoring.
+                  </p>
+                  <div className="space-y-2 p-3 border rounded-lg bg-slate-50">
+                    {availableSubAreas.map((subArea) => (
+                      <div key={subArea.id} className="flex items-center gap-2">
+                        <Checkbox
+                          id={`subarea-${subArea.id}`}
+                          checked={formSubAreaIds.includes(subArea.id)}
+                          onCheckedChange={() => toggleSubArea(subArea.id)}
+                        />
+                        <label
+                          htmlFor={`subarea-${subArea.id}`}
+                          className="flex items-center gap-2 text-sm cursor-pointer"
+                        >
+                          {subArea.colorHex && (
+                            <div
+                              className="w-3 h-3 rounded-full"
+                              style={{ backgroundColor: subArea.colorHex }}
+                            />
+                          )}
+                          {subArea.name}
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {availableSubAreas.length === 0 && (
+                <div className="text-sm text-slate-500 p-3 border rounded-lg bg-slate-50">
+                  No sub-areas defined for this area.{' '}
+                  <Link href={`/platform/content/areas/${areaId}/sub-areas`} className="text-blue-600 hover:underline">
+                    Create sub-areas
+                  </Link>{' '}
+                  to enable granular scoring.
+                </div>
+              )}
+
               <div className="flex justify-end gap-2 pt-4">
                 <Button
                   variant="outline"
@@ -360,7 +436,7 @@ export default function QuestionsManagementPage() {
                         disabled={index === 0 || isReordering}
                         onClick={() => handleMoveQuestion(question.id, 'up')}
                       >
-                        <span className="text-xs">▲</span>
+                        <span className="text-xs">&#9650;</span>
                       </Button>
                       <Button
                         variant="ghost"
@@ -369,11 +445,11 @@ export default function QuestionsManagementPage() {
                         disabled={index === questions.length - 1 || isReordering}
                         onClick={() => handleMoveQuestion(question.id, 'down')}
                       >
-                        <span className="text-xs">▼</span>
+                        <span className="text-xs">&#9660;</span>
                       </Button>
                     </div>
                     <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
                         <span className="text-sm font-medium text-slate-400">
                           #{index + 1}
                         </span>
@@ -398,6 +474,27 @@ export default function QuestionsManagementPage() {
                         <p className="text-sm text-slate-500 mt-1">
                           Help: {question.helpText}
                         </p>
+                      )}
+                      {/* Sub-area badges */}
+                      {question.subAreas && question.subAreas.length > 0 && (
+                        <div className="flex gap-1 mt-2 flex-wrap">
+                          {question.subAreas.map((qa) => (
+                            <Badge
+                              key={qa.subArea.id}
+                              variant="secondary"
+                              className="text-xs"
+                              style={{
+                                backgroundColor: qa.subArea.colorHex
+                                  ? `${qa.subArea.colorHex}20`
+                                  : undefined,
+                                borderColor: qa.subArea.colorHex || undefined,
+                                borderWidth: qa.subArea.colorHex ? '1px' : undefined,
+                              }}
+                            >
+                              {qa.subArea.name}
+                            </Badge>
+                          ))}
+                        </div>
                       )}
                     </div>
                     <div className="flex gap-2 shrink-0">

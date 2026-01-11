@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { validateAssessmentCode, startAssessmentSession } from '@/lib/auth/assessment-code';
+import { createAssessmentToken } from '@/lib/auth/jwt';
+import { hash } from '@/lib/auth/encryption';
 import { AuditEvents } from '@/lib/audit/logger';
 import { headers } from 'next/headers';
+import prisma from '@/lib/db';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { code, token } = body;
+    const { code, token, forceNewSession } = body;
 
     // Get input (either code or token from direct link)
     const input = token || code;
@@ -39,6 +42,45 @@ export async function POST(request: NextRequest) {
     const hasCompletedSession = validation.completedSession?.isComplete;
     const cohort = validation.code.cohort;
 
+    // Handle retake request
+    if (forceNewSession && hasCompletedSession) {
+      // Check if retakes are allowed
+      if (!cohort?.allowRetakes) {
+        return NextResponse.json(
+          { error: 'Retaking this assessment is not allowed' },
+          { status: 403 }
+        );
+      }
+
+      // Check for retake restrictions
+      if (validation.error) {
+        return NextResponse.json(
+          { error: validation.error },
+          { status: 403 }
+        );
+      }
+
+      // Create a brand new session for retake
+      const { session, token: sessionToken } = await startNewRetakeSession(
+        validation.code.id,
+        userAgent,
+        ipAddress
+      );
+
+      await AuditEvents.assessmentStarted(
+        validation.code.id,
+        session!.id,
+        validation.code.cohortId
+      );
+
+      return NextResponse.json({
+        valid: true,
+        sessionToken,
+        isRetake: true,
+        cohortName: cohort?.name || 'Unknown',
+      });
+    }
+
     if (hasCompletedSession && !cohort?.allowRetakes) {
       // User has completed and cannot retake - give them access to results
       const session = await startAssessmentSession(
@@ -70,6 +112,23 @@ export async function POST(request: NextRequest) {
         hasCompletedSession: true,
         canRetake: false,
         retakeError: validation.error,
+        cohortName: cohort?.name || 'Unknown',
+      });
+    }
+
+    // User has completed but CAN retake - show them the choice
+    if (hasCompletedSession && cohort?.allowRetakes && !validation.error) {
+      const session = await startAssessmentSession(
+        validation.code.id,
+        userAgent,
+        ipAddress
+      );
+
+      return NextResponse.json({
+        valid: true,
+        sessionToken: session.token,
+        hasCompletedSession: true,
+        canRetake: true,
         cohortName: cohort?.name || 'Unknown',
       });
     }
@@ -111,4 +170,58 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+/**
+ * Start a completely new session for a retake (bypasses existing session check)
+ */
+async function startNewRetakeSession(
+  assessmentCodeId: string,
+  userAgent?: string,
+  ipAddress?: string
+): Promise<{
+  session: Awaited<ReturnType<typeof prisma.assessmentSession.create>>;
+  token: string;
+}> {
+  // Get the latest attempt number
+  const lastSession = await prisma.assessmentSession.findFirst({
+    where: { assessmentCodeId },
+    orderBy: { attemptNumber: 'desc' },
+  });
+
+  const attemptNumber = (lastSession?.attemptNumber || 0) + 1;
+
+  // Create new session
+  const session = await prisma.assessmentSession.create({
+    data: {
+      assessmentCodeId,
+      attemptNumber,
+      userAgent,
+      ipAddressHash: ipAddress ? hash(ipAddress) : null,
+    },
+  });
+
+  // Update assessment code access timestamps
+  await prisma.assessmentCode.update({
+    where: { id: assessmentCodeId },
+    data: {
+      lastAccessedAt: new Date(),
+      status: 'started',
+    },
+  });
+
+  // Get cohort for token
+  const assessmentCode = await prisma.assessmentCode.findUnique({
+    where: { id: assessmentCodeId },
+    select: { cohortId: true },
+  });
+
+  // Create JWT token
+  const token = await createAssessmentToken({
+    codeId: assessmentCodeId,
+    sessionId: session.id,
+    cohortId: assessmentCode!.cohortId,
+  });
+
+  return { session, token };
 }

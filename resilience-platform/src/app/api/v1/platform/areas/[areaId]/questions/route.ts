@@ -19,6 +19,20 @@ export async function GET(
     const questions = await prisma.question.findMany({
       where: { resilienceAreaId: areaId },
       orderBy: { displayOrder: 'asc' },
+      include: {
+        subAreas: {
+          include: {
+            subArea: {
+              select: {
+                id: true,
+                name: true,
+                slug: true,
+                colorHex: true,
+              },
+            },
+          },
+        },
+      },
     });
 
     return NextResponse.json({ questions });
@@ -125,14 +139,24 @@ export async function PATCH(
     }
 
     // Update display order for each question
-    await prisma.$transaction(
-      orderedIds.map((id: string, index: number) =>
-        prisma.question.update({
-          where: { id },
-          data: { displayOrder: index + 1 },
-        })
-      )
-    );
+    // Use interactive transaction to avoid unique constraint violations
+    // First set to temporary high values, then set final values
+    await prisma.$transaction(async (tx) => {
+      // First pass: set all to temporary high values to avoid conflicts
+      for (let i = 0; i < orderedIds.length; i++) {
+        await tx.question.update({
+          where: { id: orderedIds[i] },
+          data: { displayOrder: 10000 + i },
+        });
+      }
+      // Second pass: set to final values
+      for (let i = 0; i < orderedIds.length; i++) {
+        await tx.question.update({
+          where: { id: orderedIds[i] },
+          data: { displayOrder: i + 1 },
+        });
+      }
+    });
 
     await logAuditEvent({
       eventType: 'questions_reordered',

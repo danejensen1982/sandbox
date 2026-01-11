@@ -15,7 +15,7 @@ export async function GET() {
       orderBy: { displayOrder: 'asc' },
       include: {
         _count: {
-          select: { questions: true, scoreRanges: true },
+          select: { questions: true, scoreRanges: true, subAreas: true },
         },
       },
     });

@@ -25,10 +25,36 @@ model ResilienceArea {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  questions   Question[]
-  scoreRanges ScoreRange[]
+  questions     Question[]
+  scoreRanges   ScoreRange[]
+  subAreas      SubArea[]
+  feedbackRules AreaFeedbackRule[]
 
   @@map("resilience_areas")
+}
+
+// Sub-areas within a resilience area for granular scoring
+model SubArea {
+  id               String   @id @default(uuid())
+  resilienceAreaId String
+  slug             String
+  name             String
+  description      String?  @db.Text
+  displayOrder     Int
+  colorHex         String?
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  resilienceArea     ResilienceArea          @relation(fields: [resilienceAreaId], references: [id], onDelete: Cascade)
+  questions          QuestionSubArea[]
+  scoreRanges        SubAreaScoreRange[]
+  feedbackConditions AreaFeedbackCondition[]
+
+  @@unique([resilienceAreaId, slug])
+  @@unique([resilienceAreaId, displayOrder])
+  @@index([resilienceAreaId])
+  @@map("sub_areas")
 }
 
 // =============================================
@@ -49,12 +75,29 @@ model Question {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  resilienceArea ResilienceArea @relation(fields: [resilienceAreaId], references: [id])
+  resilienceArea ResilienceArea    @relation(fields: [resilienceAreaId], references: [id])
   responses      Response[]
+  subAreas       QuestionSubArea[]
 
   @@unique([resilienceAreaId, displayOrder])
   @@index([resilienceAreaId, displayOrder])
   @@map("questions")
+}
+
+// Many-to-many: Questions can belong to multiple sub-areas
+model QuestionSubArea {
+  id         String   @id @default(uuid())
+  questionId String
+  subAreaId  String
+  createdAt  DateTime @default(now())
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  subArea  SubArea  @relation(fields: [subAreaId], references: [id], onDelete: Cascade)
+
+  @@unique([questionId, subAreaId])
+  @@index([questionId])
+  @@index([subAreaId])
+  @@map("question_sub_areas")
 }
 
 // Likert scale options (configurable per question type)
@@ -105,6 +148,58 @@ model FeedbackContent {
   scoreRange ScoreRange @relation(fields: [scoreRangeId], references: [id])
 
   @@map("feedback_content")
+}
+
+// Score ranges for sub-areas (e.g., Developing/Emerging/Strong/Exceptional)
+model SubAreaScoreRange {
+  id         String   @id @default(uuid())
+  subAreaId  String
+  minScore   Decimal  @db.Decimal(5, 2)
+  maxScore   Decimal  @db.Decimal(5, 2)
+  levelName  String   // "Developing", "Emerging", "Strong", "Exceptional"
+  levelCode  String   // "developing", "emerging", "strong", "exceptional"
+  colorHex   String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  subArea SubArea @relation(fields: [subAreaId], references: [id], onDelete: Cascade)
+
+  @@map("sub_area_score_ranges")
+}
+
+// Conditional feedback rules based on sub-area score combinations
+model AreaFeedbackRule {
+  id               String   @id @default(uuid())
+  resilienceAreaId String
+  name             String   // Admin-friendly name, e.g., "High optimism, low tools"
+  feedbackContent  String   @db.Text // Single HTML field
+  priority         Int      // Lower = higher priority (first match wins)
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  resilienceArea ResilienceArea          @relation(fields: [resilienceAreaId], references: [id], onDelete: Cascade)
+  conditions     AreaFeedbackCondition[]
+
+  @@index([resilienceAreaId, priority])
+  @@map("area_feedback_rules")
+}
+
+// Conditions for feedback rules (which sub-area levels trigger the rule)
+model AreaFeedbackCondition {
+  id         String   @id @default(uuid())
+  ruleId     String
+  subAreaId  String
+  levelCodes String[] // Levels that match, e.g., ["strong", "exceptional"]
+                      // Empty array = wildcard (any level matches)
+  createdAt  DateTime @default(now())
+
+  rule    AreaFeedbackRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  subArea SubArea          @relation(fields: [subAreaId], references: [id], onDelete: Cascade)
+
+  @@unique([ruleId, subAreaId])
+  @@index([ruleId])
+  @@map("area_feedback_conditions")
 }
 
 // Overall assessment feedback (combines all 7 areas)

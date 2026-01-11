@@ -20,6 +20,16 @@ export interface QuestionConfig {
   weight: Prisma.Decimal | number;
 }
 
+export interface SubAreaScore {
+  subAreaId: string;
+  subAreaSlug: string;
+  subAreaName: string;
+  score: number;
+  levelCode: string;
+  levelName: string;
+  colorHex?: string;
+}
+
 export interface AreaScore {
   areaId: string;
   areaSlug: string;
@@ -36,6 +46,8 @@ export interface AreaScore {
     growthAreas: string;
     recommendations: string;
   };
+  subAreaScores: SubAreaScore[];
+  conditionalFeedback?: string; // HTML from matched feedback rule
 }
 
 export interface ScoringResult {
@@ -64,6 +76,11 @@ export async function calculateScores(sessionId: string): Promise<ScoringResult>
       question: {
         include: {
           resilienceArea: true,
+          subAreas: {
+            include: {
+              subArea: true,
+            },
+          },
         },
       },
     },
@@ -72,7 +89,14 @@ export async function calculateScores(sessionId: string): Promise<ScoringResult>
   // Get all active questions grouped by area
   const questions = await prisma.question.findMany({
     where: { isActive: true },
-    include: { resilienceArea: true },
+    include: {
+      resilienceArea: true,
+      subAreas: {
+        include: {
+          subArea: true,
+        },
+      },
+    },
   });
 
   // Get score ranges and feedback content
@@ -83,6 +107,26 @@ export async function calculateScores(sessionId: string): Promise<ScoringResult>
         orderBy: { displayOrder: 'asc' },
       },
       resilienceArea: true,
+    },
+  });
+
+  // Get sub-area score ranges
+  const subAreaScoreRanges = await prisma.subAreaScoreRange.findMany({
+    include: {
+      subArea: true,
+    },
+  });
+
+  // Get feedback rules for conditional feedback
+  const feedbackRules = await prisma.areaFeedbackRule.findMany({
+    where: { isActive: true },
+    orderBy: { priority: 'asc' },
+    include: {
+      conditions: {
+        include: {
+          subArea: true,
+        },
+      },
     },
   });
 
@@ -120,7 +164,7 @@ export async function calculateScores(sessionId: string): Promise<ScoringResult>
 
     if (!area) continue;
 
-    // Find matching score range
+    // Find matching score range for the area
     const range = scoreRanges.find(
       (r) =>
         r.resilienceAreaId === areaId &&
@@ -135,8 +179,23 @@ export async function calculateScores(sessionId: string): Promise<ScoringResult>
         .filter((r) => r.resilienceAreaId === areaId)
         .sort((a, b) => Number(b.maxScore) - Number(a.maxScore))[0];
 
-    // Get feedback content
+    // Get feedback content for the area level
     const feedback = getFeedbackForRange(effectiveRange?.feedbackContent || []);
+
+    // Calculate sub-area scores
+    const subAreaScores = calculateSubAreaScores(
+      areaId,
+      areaResponses,
+      questionMap,
+      subAreaScoreRanges
+    );
+
+    // Match conditional feedback rule
+    const conditionalFeedback = matchFeedbackRule(
+      areaId,
+      subAreaScores,
+      feedbackRules
+    );
 
     areaScores.push({
       areaId,
@@ -149,6 +208,8 @@ export async function calculateScores(sessionId: string): Promise<ScoringResult>
         color: effectiveRange?.colorHex || '#888888',
       },
       feedback,
+      subAreaScores,
+      conditionalFeedback,
     });
   }
 
@@ -167,12 +228,6 @@ export async function calculateScores(sessionId: string): Promise<ScoringResult>
       : 0;
 
   // Find overall level and feedback
-  const overallRange = overallFeedback.find(
-    (f) =>
-      overallScore >= Number(f.minOverallScore) && overallScore < Number(f.maxOverallScore)
-  );
-
-  // Group overall feedback by type
   const overallFeedbackGrouped = getOverallFeedback(overallFeedback, overallScore);
 
   return {
@@ -217,6 +272,141 @@ function calculateAreaScore(
 
   // Return as percentage
   return totalMaxPossible > 0 ? (totalWeightedScore / totalMaxPossible) * 100 : 0;
+}
+
+/**
+ * Calculate sub-area scores for an area
+ */
+function calculateSubAreaScores(
+  areaId: string,
+  responses: RawResponse[],
+  questionMap: Map<
+    string,
+    QuestionConfig & {
+      questionType: string;
+      resilienceArea: { slug: string; name: string };
+      subAreas: Array<{ subArea: { id: string; slug: string; name: string } }>;
+    }
+  >,
+  subAreaScoreRanges: Array<{
+    subAreaId: string;
+    minScore: Prisma.Decimal;
+    maxScore: Prisma.Decimal;
+    levelName: string;
+    levelCode: string;
+    colorHex: string | null;
+  }>
+): SubAreaScore[] {
+  // Build map of subAreaId -> responses
+  const responsesBySubArea = new Map<string, RawResponse[]>();
+  const subAreaInfo = new Map<string, { slug: string; name: string }>();
+
+  for (const response of responses) {
+    const question = questionMap.get(response.questionId);
+    if (!question) continue;
+
+    // Add response to each sub-area the question belongs to
+    for (const qa of question.subAreas) {
+      const subAreaId = qa.subArea.id;
+      if (!responsesBySubArea.has(subAreaId)) {
+        responsesBySubArea.set(subAreaId, []);
+        subAreaInfo.set(subAreaId, {
+          slug: qa.subArea.slug,
+          name: qa.subArea.name,
+        });
+      }
+      responsesBySubArea.get(subAreaId)!.push(response);
+    }
+  }
+
+  // Calculate score for each sub-area
+  const subAreaScores: SubAreaScore[] = [];
+
+  for (const [subAreaId, subAreaResponses] of responsesBySubArea) {
+    const score = calculateAreaScore(subAreaResponses, questionMap);
+    const info = subAreaInfo.get(subAreaId);
+
+    if (!info) continue;
+
+    // Find matching score range
+    const ranges = subAreaScoreRanges.filter((r) => r.subAreaId === subAreaId);
+    const matchingRange = ranges.find(
+      (r) => score >= Number(r.minScore) && score < Number(r.maxScore)
+    );
+
+    // Fallback to highest range if score is exactly 100
+    const effectiveRange =
+      matchingRange ||
+      ranges.sort((a, b) => Number(b.maxScore) - Number(a.maxScore))[0];
+
+    subAreaScores.push({
+      subAreaId,
+      subAreaSlug: info.slug,
+      subAreaName: info.name,
+      score: Math.round(score * 100) / 100,
+      levelCode: effectiveRange?.levelCode || 'unknown',
+      levelName: effectiveRange?.levelName || 'Unknown',
+      colorHex: effectiveRange?.colorHex || undefined,
+    });
+  }
+
+  return subAreaScores;
+}
+
+/**
+ * Match a feedback rule based on sub-area score levels
+ */
+function matchFeedbackRule(
+  areaId: string,
+  subAreaScores: SubAreaScore[],
+  feedbackRules: Array<{
+    id: string;
+    resilienceAreaId: string;
+    feedbackContent: string;
+    priority: number;
+    isActive: boolean;
+    conditions: Array<{
+      subAreaId: string;
+      levelCodes: string[];
+    }>;
+  }>
+): string | undefined {
+  // Get rules for this area, ordered by priority
+  const areaRules = feedbackRules
+    .filter((r) => r.resilienceAreaId === areaId && r.isActive)
+    .sort((a, b) => a.priority - b.priority);
+
+  // Build lookup of subAreaId -> levelCode
+  const levelCodeMap = new Map(subAreaScores.map((s) => [s.subAreaId, s.levelCode]));
+
+  // Find first matching rule
+  for (const rule of areaRules) {
+    let allConditionsMatch = true;
+
+    for (const condition of rule.conditions) {
+      const currentLevel = levelCodeMap.get(condition.subAreaId);
+
+      if (currentLevel === undefined) {
+        // Sub-area not in scores - condition doesn't match
+        allConditionsMatch = false;
+        break;
+      }
+
+      // Empty levelCodes = wildcard (any level matches)
+      if (condition.levelCodes.length > 0) {
+        if (!condition.levelCodes.includes(currentLevel)) {
+          allConditionsMatch = false;
+          break;
+        }
+      }
+    }
+
+    if (allConditionsMatch) {
+      return rule.feedbackContent;
+    }
+  }
+
+  return undefined;
 }
 
 /**
@@ -285,10 +475,21 @@ function getLevelColorForScore(score: number): string {
  * Store calculated scores in the session
  */
 export async function storeScores(sessionId: string, scores: ScoringResult): Promise<void> {
-  // Build area scores JSON
-  const areaScoresJson: Record<string, number> = {};
+  // Build area scores JSON (includes sub-area scores)
+  const areaScoresJson: Record<string, number | { score: number; subAreas?: Record<string, number> }> = {};
   for (const area of scores.areaScores) {
-    areaScoresJson[area.areaSlug] = area.score;
+    if (area.subAreaScores.length > 0) {
+      const subAreas: Record<string, number> = {};
+      for (const subArea of area.subAreaScores) {
+        subAreas[subArea.subAreaSlug] = subArea.score;
+      }
+      areaScoresJson[area.areaSlug] = {
+        score: area.score,
+        subAreas,
+      };
+    } else {
+      areaScoresJson[area.areaSlug] = area.score;
+    }
   }
 
   await prisma.assessmentSession.update({

@@ -39,6 +39,7 @@ interface ResilienceArea {
   _count: {
     questions: number;
     scoreRanges: number;
+    subAreas: number;
   };
   questions?: Array<{
     id: string;
@@ -296,6 +297,11 @@ export default function ContentManagementPage() {
                         <Link href={`/platform/content/areas/${area.id}/scoring`}>
                           <Button variant="outline" size="sm">
                             Scoring ({area._count.scoreRanges})
+                          </Button>
+                        </Link>
+                        <Link href={`/platform/content/areas/${area.id}/sub-areas`}>
+                          <Button variant="outline" size="sm">
+                            Sub-Areas ({area._count.subAreas})
                           </Button>
                         </Link>
                         <Link href={`/platform/content/areas/${area.id}/feedback`}>
