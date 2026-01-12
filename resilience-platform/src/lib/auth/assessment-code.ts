@@ -185,6 +185,13 @@ export async function validateAssessmentCode(input: string): Promise<{
         };
       }
     }
+
+    // Retakes allowed with no restrictions - still return completedSession for UI choice
+    return {
+      valid: true,
+      code: assessmentCode,
+      completedSession: lastSession,
+    };
   }
 
   return { valid: true, code: assessmentCode };
