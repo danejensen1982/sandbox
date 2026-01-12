@@ -100,10 +100,6 @@ export async function validateAssessmentCode(input: string): Promise<{
         cohort: {
           include: { organization: true },
         },
-        assessmentSessions: {
-          orderBy: { attemptNumber: 'desc' },
-          take: 1,
-        },
       },
     });
   } else {
@@ -114,10 +110,6 @@ export async function validateAssessmentCode(input: string): Promise<{
       include: {
         cohort: {
           include: { organization: true },
-        },
-        assessmentSessions: {
-          orderBy: { attemptNumber: 'desc' },
-          take: 1,
         },
       },
     });
@@ -146,16 +138,24 @@ export async function validateAssessmentCode(input: string): Promise<{
     return { valid: false, error: 'This assessment access period has ended' };
   }
 
-  // Check for completed sessions
-  const lastSession = assessmentCode.assessmentSessions[0];
-  if (lastSession?.isComplete) {
+  // Check for completed sessions - fetch the most recent COMPLETE session
+  // (not just the most recent session, which could be an orphan incomplete one)
+  const completedSession = await prisma.assessmentSession.findFirst({
+    where: {
+      assessmentCodeId: assessmentCode.id,
+      isComplete: true,
+    },
+    orderBy: { attemptNumber: 'desc' },
+  });
+
+  if (completedSession) {
     // Check if retakes are allowed
     if (!assessmentCode.cohort.allowRetakes) {
       // Return the completed session so user can view results
       return {
         valid: true,
         code: assessmentCode,
-        completedSession: lastSession,
+        completedSession,
       };
     }
 
@@ -167,20 +167,20 @@ export async function validateAssessmentCode(input: string): Promise<{
       return {
         valid: true,
         code: assessmentCode,
-        completedSession: lastSession,
+        completedSession,
         error: 'Maximum retake limit reached',
       };
     }
 
     // Check cooldown period
-    if (assessmentCode.cohort.retakeCooldownDays > 0 && lastSession.completedAt) {
-      const cooldownEnd = new Date(lastSession.completedAt);
+    if (assessmentCode.cohort.retakeCooldownDays > 0 && completedSession.completedAt) {
+      const cooldownEnd = new Date(completedSession.completedAt);
       cooldownEnd.setDate(cooldownEnd.getDate() + assessmentCode.cohort.retakeCooldownDays);
       if (cooldownEnd > now) {
         return {
           valid: true,
           code: assessmentCode,
-          completedSession: lastSession,
+          completedSession,
           error: `You can retake this assessment after ${cooldownEnd.toLocaleDateString()}`,
         };
       }
@@ -190,7 +190,7 @@ export async function validateAssessmentCode(input: string): Promise<{
     return {
       valid: true,
       code: assessmentCode,
-      completedSession: lastSession,
+      completedSession,
     };
   }
 

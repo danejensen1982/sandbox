@@ -83,15 +83,16 @@ export async function POST(request: NextRequest) {
 
     if (hasCompletedSession && !cohort?.allowRetakes) {
       // User has completed and cannot retake - give them access to results
-      const session = await startAssessmentSession(
-        validation.code.id,
-        userAgent,
-        ipAddress
-      );
+      // Create token for the completed session directly (don't create new session)
+      const sessionToken = await createAssessmentToken({
+        codeId: validation.code.id,
+        sessionId: validation.completedSession!.id,
+        cohortId: validation.code.cohortId,
+      });
 
       return NextResponse.json({
         valid: true,
-        sessionToken: session.token,
+        sessionToken,
         hasCompletedSession: true,
         canRetake: false,
         cohortName: cohort?.name || 'Unknown',
@@ -100,15 +101,16 @@ export async function POST(request: NextRequest) {
 
     if (hasCompletedSession && validation.error) {
       // User completed but has a retake restriction (cooldown, max attempts)
-      const session = await startAssessmentSession(
-        validation.code.id,
-        userAgent,
-        ipAddress
-      );
+      // Create token for the completed session directly (don't create new session)
+      const sessionToken = await createAssessmentToken({
+        codeId: validation.code.id,
+        sessionId: validation.completedSession!.id,
+        cohortId: validation.code.cohortId,
+      });
 
       return NextResponse.json({
         valid: true,
-        sessionToken: session.token,
+        sessionToken,
         hasCompletedSession: true,
         canRetake: false,
         retakeError: validation.error,
@@ -118,15 +120,16 @@ export async function POST(request: NextRequest) {
 
     // User has completed but CAN retake - show them the choice
     if (hasCompletedSession && cohort?.allowRetakes && !validation.error) {
-      const session = await startAssessmentSession(
-        validation.code.id,
-        userAgent,
-        ipAddress
-      );
+      // Create token for the completed session directly (don't create new session)
+      const sessionToken = await createAssessmentToken({
+        codeId: validation.code.id,
+        sessionId: validation.completedSession!.id,
+        cohortId: validation.code.cohortId,
+      });
 
       return NextResponse.json({
         valid: true,
-        sessionToken: session.token,
+        sessionToken,
         hasCompletedSession: true,
         canRetake: true,
         cohortName: cohort?.name || 'Unknown',
